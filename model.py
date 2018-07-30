@@ -75,4 +75,3 @@ def build_model(rnn_num,
         acc='categorical_accuracy'
     )
     return model
-
