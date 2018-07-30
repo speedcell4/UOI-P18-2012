@@ -1,3 +1,4 @@
+numpy
 tensorflow
 keras
 keras-word-char-embd

@@ -108,3 +108,6 @@ venv.bak/
 
 # IDE
 .idea
+
+# Model weights
+*.h5

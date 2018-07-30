@@ -3,25 +3,28 @@ import keras.backend as K
 from keras_wc_embd import get_embedding_layer
 
 
-def _loss(layers, input_dim, rnn_units, lmbd=0.01):
+def _loss(layers, rnn_units, lmbd=0.01):
     """Generate loss function.
 
     :param layers: Parallel RNN layers.
-    :param input_dim: The input dimension of RNN layers.
     :param rnn_units: Unit size for each RNN.
     :param lmbd: A constant controlling the weights of losses.
 
     :return loss: The loss function.
     """
     def __loss(y_true, y_pred):
-        kernel_cs = []
-        for layer in layers:
-            kernel_c = layer.cell.get_weights()[0][:, rnn_units * 2: rnn_units * 3]
-            kernel_cs.append(kernel_c.reshape((input_dim * rnn_units,)))
-        phi = K.stack(kernel_cs)
-        loss_sim = K.sum(K.dot(phi, K.transpose(phi)) - K.eye(len(layers)))
-        loss_cat = K.sum(y_true * K.log(y_pred))
-        return loss_cat + lmbd * loss_sim
+        kernel_cs_forward, kernel_cs_backward = [], []
+        for (forward, backward) in layers:
+            kernel_c_forward = forward.cell.get_weights()[1][:, rnn_units * 2:rnn_units * 3]
+            kernel_c_backward = backward.cell.get_weights()[1][:, rnn_units * 2:rnn_units * 3]
+            kernel_cs_forward.append(kernel_c_forward.reshape((rnn_units * rnn_units,)))
+            kernel_cs_backward.append(kernel_c_backward.reshape((rnn_units * rnn_units,)))
+        phi_forward = K.stack(kernel_cs_forward)
+        phi_backward = K.stack(kernel_cs_backward)
+        loss_sim_forward = K.sum(K.square(K.dot(phi_forward, K.transpose(phi_forward)) - K.eye(len(layers))))
+        loss_sim_backward = K.sum(K.square(K.dot(phi_backward, K.transpose(phi_backward)) - K.eye(len(layers))))
+        loss_cat = keras.losses.categorical_crossentropy(y_true, y_pred)
+        return loss_cat + lmbd * (loss_sim_forward + loss_sim_backward)
     return __loss
 
 
@@ -60,18 +63,22 @@ def build_model(rnn_num,
     for i in range(rnn_num):
         lstm_layer = keras.layers.LSTM(
             units=rnn_units,
+            recurrent_dropout=0.1,
             return_sequences=True,
+        )
+        bi_lstm_layer = keras.layers.Bidirectional(
+            layer=lstm_layer,
             name='LSTM_%d' % (i + 1),
         )
-        layers.append(lstm_layer)
-        rnns.append(lstm_layer(embd_layer))
+        layers.append((bi_lstm_layer.forward_layer, bi_lstm_layer.backward_layer))
+        rnns.append(bi_lstm_layer(embd_layer))
     concat_layer = keras.layers.Concatenate(name='Concatenation')(rnns)
     dense_layer = keras.layers.Dense(units=output_dim, activation='softmax', name='Dense')(concat_layer)
     model = keras.models.Model(inputs=inputs, outputs=dense_layer)
-    loss = _loss(layers, word_dim + char_dim, rnn_units)
+    loss = _loss(layers, rnn_units)
     model.compile(
         optimizer='adam',
         loss=loss,
-        acc='categorical_accuracy'
+        metrics=['categorical_accuracy'],
     )
     return model
