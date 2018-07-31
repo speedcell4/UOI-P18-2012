@@ -2,7 +2,7 @@ import os
 import codecs
 import numpy
 import keras
-from keras_wc_embd import get_dicts_generator, get_batch_input
+from keras_wc_embd import get_dicts_generator, get_batch_input, get_embedding_weights_from_file
 from model import build_model
 
 
@@ -12,6 +12,8 @@ DATA_ROOT = 'dataset/CoNNL2003eng'
 DATA_TRAIN_PATH = os.path.join(DATA_ROOT, 'train.txt')
 DATA_VALID_PATH = os.path.join(DATA_ROOT, 'valid.txt')
 DATA_TEST_PATH = os.path.join(DATA_ROOT, 'test.txt')
+
+WORD_EMBD_PATH = 'dataset/glove.6B.100d.txt'
 
 RNN_NUM = 16
 RNN_UNITS = 64
@@ -66,6 +68,28 @@ for sentence in train_sentences:
     dicts_generator(sentence)
 word_dict, char_dict, max_word_len = dicts_generator(return_dict=True)
 
+if os.path.exists(WORD_EMBD_PATH):
+    print('Embedding...')
+    word_dict = {
+        '': 0,
+        '<UNK>': 1,
+    }
+    with codecs.open(WORD_EMBD_PATH, 'r', 'utf8') as reader:
+        for line in reader:
+            line = line.strip()
+            if not line:
+                continue
+            word = line.split()[0].lower()
+            if word not in word_dict:
+                word_dict[word] = len(word_dict)
+    word_embd_weights = get_embedding_weights_from_file(
+        word_dict,
+        WORD_EMBD_PATH,
+        ignore_case=True,
+    )
+else:
+    word_embd_weights = None
+
 train_steps = (len(train_sentences) + BATCH_SIZE - 1) // BATCH_SIZE
 valid_steps = (len(valid_sentences) + BATCH_SIZE - 1) // BATCH_SIZE
 
@@ -101,7 +125,8 @@ model = build_model(rnn_num=RNN_NUM,
                     word_dict_len=len(word_dict),
                     char_dict_len=len(char_dict),
                     max_word_len=max_word_len,
-                    output_dim=len(TAGS))
+                    output_dim=len(TAGS),
+                    word_embd_weights=word_embd_weights)
 model.summary()
 
 if os.path.exists(MODEL_PATH):
@@ -115,8 +140,8 @@ model.fit_generator(
     validation_data=batch_generator(valid_sentences, valid_taggings, valid_steps),
     validation_steps=valid_steps,
     callbacks=[
-        keras.callbacks.EarlyStopping(monitor='val_loss', patience=5),
-        keras.callbacks.EarlyStopping(monitor='val_categorical_accuracy', patience=5),
+        keras.callbacks.EarlyStopping(monitor='val_loss', patience=2),
+        keras.callbacks.EarlyStopping(monitor='val_categorical_accuracy', patience=2),
     ],
     verbose=True,
 )

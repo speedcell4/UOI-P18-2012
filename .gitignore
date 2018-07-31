@@ -111,3 +111,9 @@ venv.bak/
 
 # Model weights
 *.h5
+
+# Word vectors
+glove*
+
+# Temporary files
+*.swp

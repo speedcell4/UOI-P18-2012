@@ -36,7 +36,8 @@ def build_model(rnn_num,
                 output_dim,
                 word_dim=100,
                 char_dim=100,
-                char_embd_dim=100):
+                char_embd_dim=100,
+                word_embd_weights=None):
     """Build model for NER.
 
     :param rnn_num: Number of parallel RNNs.
@@ -48,6 +49,7 @@ def build_model(rnn_num,
     :param word_dim: The dimension of word embedding.
     :param char_dim: The final dimension of character embedding.
     :param char_embd_dim: The embedding dimension of characters before bidirectional RNN.
+    :param word_embd_weights: Pre-trained embeddings for words.
 
     :return model: The built model.
     """
@@ -58,11 +60,13 @@ def build_model(rnn_num,
         word_embd_dim=word_dim,
         char_hidden_dim=char_dim // 2,
         char_embd_dim=char_embd_dim,
+        word_embd_weights=word_embd_weights,
     )
     rnns, layers = [], []
     for i in range(rnn_num):
         lstm_layer = keras.layers.LSTM(
             units=rnn_units,
+            dropout=0.1,
             recurrent_dropout=0.1,
             return_sequences=True,
         )
