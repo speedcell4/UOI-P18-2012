@@ -14,10 +14,10 @@ DATA_VALID_PATH = os.path.join(DATA_ROOT, 'valid.txt')
 DATA_TEST_PATH = os.path.join(DATA_ROOT, 'test.txt')
 
 RNN_NUM = 16
-RNN_UNITS = 32
+RNN_UNITS = 64
 
-BATCH_SIZE = 32
-EPOCHS = 1
+BATCH_SIZE = 16
+EPOCHS = 10
 
 TAGS = {
     'O': 0,
@@ -52,6 +52,7 @@ def load_data(path):
     return sentences, taggings
 
 
+print('Loading...')
 train_sentences, train_taggings = load_data(DATA_TRAIN_PATH)
 valid_sentences, valid_taggings = load_data(DATA_VALID_PATH)
 
@@ -69,7 +70,7 @@ train_steps = (len(train_sentences) + BATCH_SIZE - 1) // BATCH_SIZE
 valid_steps = (len(valid_sentences) + BATCH_SIZE - 1) // BATCH_SIZE
 
 
-def batch_generator(sentences, taggings, steps):
+def batch_generator(sentences, taggings, steps, training=True):
     global word_dict, char_dict, max_word_len
     while True:
         for i in range(steps):
@@ -83,11 +84,16 @@ def batch_generator(sentences, taggings, steps):
                 word_ignore_case=True,
                 char_ignore_case=False
             )
+            if not training:
+                yield [word_input, char_input], batch_taggings
+                continue
             sentence_len = word_input.shape[1]
             for j in range(len(batch_taggings)):
                 batch_taggings[j] = batch_taggings[j] + [0] * (sentence_len - len(batch_taggings[j]))
             batch_taggings = keras.utils.to_categorical(numpy.asarray(batch_taggings), len(TAGS))
             yield [word_input, char_input], batch_taggings
+        if not training:
+            break
 
 
 model = build_model(rnn_num=RNN_NUM,
@@ -101,6 +107,7 @@ model.summary()
 if os.path.exists(MODEL_PATH):
     model.load_weights(MODEL_PATH, by_name=True)
 
+print('Fitting...')
 model.fit_generator(
     generator=batch_generator(train_sentences, train_taggings, train_steps),
     steps_per_epoch=train_steps,
@@ -108,8 +115,8 @@ model.fit_generator(
     validation_data=batch_generator(valid_sentences, valid_taggings, valid_steps),
     validation_steps=valid_steps,
     callbacks=[
-        keras.callbacks.EarlyStopping(monitor='val_loss', patience=2),
-        keras.callbacks.EarlyStopping(monitor='val_categorical_accuracy', patience=3),
+        keras.callbacks.EarlyStopping(monitor='val_loss', patience=5),
+        keras.callbacks.EarlyStopping(monitor='val_categorical_accuracy', patience=5),
     ],
     verbose=True,
 )
@@ -119,8 +126,41 @@ model.save_weights(MODEL_PATH)
 test_sentences, test_taggings = load_data(DATA_TEST_PATH)
 test_steps = (len(valid_sentences) + BATCH_SIZE - 1) // BATCH_SIZE
 
-model.evaluate_generator(
-    generator=batch_generator(test_sentences, test_taggings, test_steps),
-    steps=test_steps,
-    verbose=True,
-)
+print('Predicting...')
+
+
+def get_tags(tags):
+    filtered = []
+    for i in range(len(tags)):
+        if tags[i] == 0:
+            continue
+        if tags[i] % 2 == 1:
+            filtered.append({
+                'begin': i,
+                'end': i,
+                'type': i,
+            })
+        elif i > 0 and tags[i - 1] == tags[i] - 1:
+            filtered[-1]['end'] += 1
+    return filtered
+
+
+eps = 1e-6
+total_pred, total_true, matched_num = 0, 0, 0.0
+for inputs, batch_taggings in batch_generator(
+        test_sentences,
+        test_taggings,
+        test_steps,
+        training=False):
+    predict = model.predict_on_batch(inputs)
+    predict = numpy.argmax(predict, axis=2).tolist()
+    for i, pred in enumerate(predict):
+        pred = get_tags(pred)
+        true = get_tags(batch_taggings[i])
+        total_pred += len(pred)
+        total_true += len(true)
+        matched_num += sum([1 for tag in pred if tag in true])
+precision = (matched_num + eps) / (total_pred + eps)
+recall = (matched_num + eps) / (total_true + eps)
+f1 = 2 * precision * recall / (precision + recall)
+print('P: %.4f  R: %.4f  F: %.4f' % (precision, recall, f1))
