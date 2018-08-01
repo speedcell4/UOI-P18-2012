@@ -3,7 +3,7 @@ import keras.backend as K
 from keras_wc_embd import get_embedding_layer
 
 
-def _loss(layers, rnn_units, lmbd=0.01):
+def _loss(layers, rnn_units, lmbd):
     """Generate loss function.
 
     :param layers: Parallel RNN layers.
@@ -15,10 +15,10 @@ def _loss(layers, rnn_units, lmbd=0.01):
     def __loss(y_true, y_pred):
         kernel_cs_forward, kernel_cs_backward = [], []
         for (forward, backward) in layers:
-            kernel_c_forward = forward.cell.get_weights()[1][:, rnn_units * 2:rnn_units * 3]
-            kernel_c_backward = backward.cell.get_weights()[1][:, rnn_units * 2:rnn_units * 3]
-            kernel_cs_forward.append(kernel_c_forward.reshape((rnn_units * rnn_units,)))
-            kernel_cs_backward.append(kernel_c_backward.reshape((rnn_units * rnn_units,)))
+            kernel_c_forward = forward.cell.trainable_weights[1][:, rnn_units * 2:rnn_units * 3]
+            kernel_c_backward = backward.cell.trainable_weights[1][:, rnn_units * 2:rnn_units * 3]
+            kernel_cs_forward.append(K.reshape(kernel_c_forward, (rnn_units * rnn_units,)))
+            kernel_cs_backward.append(K.reshape(kernel_c_backward, (rnn_units * rnn_units,)))
         phi_forward = K.stack(kernel_cs_forward)
         phi_backward = K.stack(kernel_cs_backward)
         loss_sim_forward = K.sum(K.square(K.dot(phi_forward, K.transpose(phi_forward)) - K.eye(len(layers))))
@@ -37,6 +37,7 @@ def build_model(rnn_num,
                 word_dim=100,
                 char_dim=100,
                 char_embd_dim=100,
+                lmbd=0.01,
                 word_embd_weights=None):
     """Build model for NER.
 
@@ -49,6 +50,7 @@ def build_model(rnn_num,
     :param word_dim: The dimension of word embedding.
     :param char_dim: The final dimension of character embedding.
     :param char_embd_dim: The embedding dimension of characters before bidirectional RNN.
+    :param lmbd: A constant controlling the weights of losses.
     :param word_embd_weights: Pre-trained embeddings for words.
 
     :return model: The built model.
@@ -79,10 +81,10 @@ def build_model(rnn_num,
     concat_layer = keras.layers.Concatenate(name='Concatenation')(rnns)
     dense_layer = keras.layers.Dense(units=output_dim, activation='softmax', name='Dense')(concat_layer)
     model = keras.models.Model(inputs=inputs, outputs=dense_layer)
-    loss = _loss(layers, rnn_units)
+    loss = _loss(layers, rnn_units, lmbd=lmbd)
     model.compile(
-        optimizer='adam',
+        optimizer=keras.optimizers.Adam(),
         loss=loss,
-        metrics=['categorical_accuracy'],
+        metrics=[keras.metrics.categorical_accuracy],
     )
     return model
