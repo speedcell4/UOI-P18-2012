@@ -16,7 +16,7 @@ DATA_TEST_PATH = os.path.join(DATA_ROOT, 'test.txt')
 WORD_EMBD_PATH = 'dataset/glove.6B.100d.txt'
 
 RNN_NUM = 16
-RNN_UNITS = 64
+RNN_UNITS = 32
 
 BATCH_SIZE = 16
 EPOCHS = 10
