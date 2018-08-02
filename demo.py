@@ -180,7 +180,7 @@ for inputs, batch_taggings in batch_generator(
     predict = model.predict_on_batch(inputs)
     predict = numpy.argmax(predict, axis=2).tolist()
     for i, pred in enumerate(predict):
-        pred = get_tags(pred)
+        pred = get_tags(pred[:len(batch_taggings[i])])
         true = get_tags(batch_taggings[i])
         total_pred += len(pred)
         total_true += len(true)
