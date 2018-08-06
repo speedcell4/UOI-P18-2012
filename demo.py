@@ -16,7 +16,7 @@ DATA_TEST_PATH = os.path.join(DATA_ROOT, 'test.txt')
 WORD_EMBD_PATH = 'dataset/glove.6B.100d.txt'
 
 RNN_NUM = 16
-RNN_UNITS = 64
+RNN_UNITS = 32
 
 BATCH_SIZE = 16
 EPOCHS = 10
@@ -180,7 +180,7 @@ for inputs, batch_taggings in batch_generator(
     predict = model.predict_on_batch(inputs)
     predict = numpy.argmax(predict, axis=2).tolist()
     for i, pred in enumerate(predict):
-        pred = get_tags(pred)
+        pred = get_tags(pred[:len(batch_taggings[i])])
         true = get_tags(batch_taggings[i])
         total_pred += len(pred)
         total_true += len(true)
